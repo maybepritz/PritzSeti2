@@ -7,11 +7,10 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
-public final class SockerClient {
-    public SockerClient() {}
+public final class SocketClient {
+    public SocketClient() {}
 
     public static RawResponse get(String host, int port, String path, int timeout) throws IOException {
         try(Socket socket = new Socket()) {
@@ -19,10 +18,11 @@ public final class SockerClient {
             socket.setSoTimeout(timeout);
 
             OutputStream out = socket.getOutputStream();
-            String rawRequest = "GET " + path + "HTTP/1.0\r\n" +
+            String rawRequest = "GET " + path + " HTTP/1.0\r\n" +
                     "Host: " + host + "\r\n" +
-                    "Accept: text/html\r\n" +
-                    "Connection: close\r\n\r\n";
+                    "Accept: text/html,*/*\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n";
 
             out.write(rawRequest.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -30,12 +30,17 @@ public final class SockerClient {
             InputStream in = new BufferedInputStream(socket.getInputStream());
 
             String statusLine = readLine(in);
-            if(statusLine == null || statusLine.isEmpty()){
-                throw new IOException("Пустой ответ от сервера");
+            if (statusLine == null || statusLine.trim().isEmpty()) {
+                throw new IOException("Сервер закрыл соединение без ответа");
             }
 
-            String[] statusParts = statusLine.split(" ");
-            int statusCode = statusParts.length >= 2 ? Integer.parseInt(statusParts[1]) : 0;
+            int statusCode = 0;
+            String[] statusParts = statusLine.split("\\s+");
+            if (statusParts.length >= 2) {
+                try {
+                    statusCode = Integer.parseInt(statusParts[1].trim());
+                } catch (NumberFormatException ignored) {}
+            }
 
             Map<String, String> headers = new HashMap<>();
             String line;
@@ -56,12 +61,10 @@ public final class SockerClient {
             }
 
             return new RawResponse(statusCode, headers, bodyStream.toByteArray());
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 
-    private static String readLine(InputStream in) throws Exception {
+    private static String readLine(InputStream in) throws IOException {
         ByteArrayOutputStream buff = new ByteArrayOutputStream();
         int b;
         while((b = in.read()) != -1) {
